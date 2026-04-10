@@ -14,3 +14,4 @@ platforms.yml
 
 # OS
 .DS_Store
+.gstack/
