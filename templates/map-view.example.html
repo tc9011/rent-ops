@@ -108,6 +108,14 @@
     .m-dot.big { width: 36px; height: 36px; font-size: 11px; border-width: 3px; }
     .m-dot.sm  { width: 28px; height: 28px; font-size: 10px; }
 
+    .m-label {
+      position: absolute; top: -20px; left: 50%; transform: translateX(-50%);
+      background: rgba(30,30,30,0.88); color: #fff; font-size: 10px; font-weight: 600;
+      padding: 2px 6px; border-radius: 4px; white-space: nowrap;
+      pointer-events: none; line-height: 1.3;
+    }
+    .m-wrap { position: relative; display: flex; align-items: center; justify-content: center; }
+
     .work-wrap { position: relative; display: flex; align-items: center; justify-content: center; }
     .work-pulse {
       position: absolute; border-radius: 50%; opacity: 0;
@@ -171,7 +179,7 @@
   <div class="leg-row"><span class="leg-dot" style="background:#ff3b30"></span>__WORK_NAME__（工作地）</div>
   <!-- __AREA_LEGEND_ROWS__: AI 根据 areaColor 生成，格式: -->
   <!-- <div class="leg-row"><span class="leg-dot" style="background:#hex"></span>区名</div> -->
-  <div class="leg-hint">数字 = 月租(千元) · 大圈 = 有价格</div>
+  <div class="leg-hint">圆圈 = 月租(千元) · 标签 = 评分 · 半透明 = 放弃</div>
 </div>
 
 <div id="geo-status"></div>
@@ -207,15 +215,28 @@
   function addMarker(l) {
     const color = areaColor[l.area] || '#666';
     const hasPrice = l.price && l.price > 0;
-    const label = hasPrice ? (l.price/1000).toFixed(1)+'k' : '?';
+    const hasScore = l.score && l.score > 0;
+    const dotText = hasPrice ? (l.price/1000).toFixed(1)+'k' : '?';
     const cls = hasPrice ? 'big' : 'sm';
     const pos = l.pos || [l.lng, l.lat];
 
+    // 状态样式
+    const isGiveUp = l.status === '放弃';
+    const dotStyle = isGiveUp
+      ? `background:${color};opacity:0.4;border-color:#ccc`
+      : `background:${color}`;
+
+    // 上方标签：评分 + 状态
+    const scoreTxt = hasScore ? l.score.toFixed(1)+'⭐' : '';
+    const statusTxt = isGiveUp ? '✗' : '';
+    const labelParts = [scoreTxt, statusTxt].filter(Boolean).join(' ');
+    const labelHtml = labelParts ? `<div class="m-label">${labelParts}</div>` : '';
+
     const m = new AMap.Marker({
       position: pos,
-      offset: new AMap.Pixel(hasPrice ? -18 : -14, hasPrice ? -18 : -14),
-      content: `<div class="m-dot ${cls}" style="background:${color}">${label}</div>`,
-      zIndex: hasPrice ? 120 : 100,
+      offset: new AMap.Pixel(-18, -38),
+      content: `<div class="m-wrap">${labelHtml}<div class="m-dot ${cls}" style="${dotStyle}">${dotText}</div></div>`,
+      zIndex: hasScore ? 120 : 100,
     });
     m.on('click', () => openPanel(l));
     m.addTo(map);
@@ -356,13 +377,26 @@
       ? `<a class="panel-btn" href="${l.url}" target="_blank">查看原帖 →</a>`
       : `<a class="panel-btn disabled">暂无链接（${l.platform}）</a>`;
 
+    const scoreHtml = l.score
+      ? `<span style="display:inline-flex;align-items:center;gap:3px;font-size:18px;font-weight:700;color:#1d1d1f;margin:6px 0 2px">` +
+        `${l.score.toFixed(1)} <span style="font-size:13px;color:#86868b;font-weight:400">/ 5.0</span></span>`
+      : '';
+
+    const statusHtml = l.status
+      ? `<span style="display:inline-block;font-size:11px;padding:2px 7px;border-radius:5px;margin-left:6px;` +
+        `background:${l.status==='放弃'?'#fce4ec':l.status==='已看'?'#e8f5e9':'#e3f2fd'};` +
+        `color:${l.status==='放弃'?'#c62828':l.status==='已看'?'#2e7d32':'#1565c0'}">${l.status}</span>`
+      : '';
+
     document.getElementById('panel-body').innerHTML = `
     <div>
       <span class="panel-badge pb-${l.platform}">${l.platform}</span>
       ${l.rec ? '<span class="panel-rec">推荐</span>' : ''}
       ${l.geocoded === false ? '<span style="font-size:11px;color:#999;margin-left:4px">大致位置</span>' : ''}
+      ${statusHtml}
     </div>
     <div class="panel-name">${l.name}</div>
+    ${scoreHtml}
     ${priceHtml}
     <div class="panel-tags">${tags}</div>
     <div class="panel-desc">${l.desc || ''}</div>
