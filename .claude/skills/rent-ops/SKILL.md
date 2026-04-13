@@ -18,6 +18,7 @@ args: mode
 | `scan` | `scan` |
 | `tracker` | `tracker` |
 | `risk` | `risk` |
+| `verify` | `verify` — 假房源检测 |
 | `visit` | `visit` |
 | `map` | `map` — 打开地图可视化 |
 | `scrape` | `scrape` — 执行豆瓣/小红书爬虫 |
@@ -46,6 +47,7 @@ args: mode
 /rent map                → 打开高德地图可视化（所有房源定位展示）
 /rent tracker            → 查看/管理房源跟踪表
 /rent risk {小区名}       → 搜集该小区避雷信息
+/rent verify {链接}       → 假房源检测（价格异常/隔断/二房东/平台专属检查）
 /rent visit              → 看房准备（路线 + checklist + 砍价话术）
 
 即将支持：
@@ -63,7 +65,7 @@ args: mode
 确定 mode 后，加载对应文件再执行：
 
 ### 需要 _shared.md + _profile.md + mode 文件：
-- `auto-evaluate`, `scan`
+- `auto-evaluate`, `scan`, `verify`
 
 加载顺序：先读 `modes/_shared.md`，再读 `modes/_profile.md`（用户配置覆盖系统默认），最后读 `modes/{mode}.md`。
 
