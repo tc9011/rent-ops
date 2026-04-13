@@ -6,7 +6,6 @@ data/*.json
 !data/.gitkeep
 
 # Keep system-layer HTML templates
-!data/map-view.html
 !data/listings-view.html
 
 # Reports (never commit)

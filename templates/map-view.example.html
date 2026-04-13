@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>__CITY__租房地图</title>
+  <script>
+    window._AMapSecurityConfig = { securityJsCode: '__AMAP_SECURITY_CODE__' };
+  </script>
+  <script src="https://webapi.amap.com/maps?v=2.0&key=__AMAP_JS_KEY__&plugin=AMap.InfoWindow,AMap.Scale,AMap.ToolBar,AMap.PlaceSearch,AMap.Geocoder"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif; }
+
+    #header {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+      background: rgba(20,20,22,0.92);
+      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      padding: 12px 20px; display: flex; align-items: center; gap: 16px;
+    }
+    #header h1 { font-size: 16px; font-weight: 600; color: #fff; white-space: nowrap; }
+    #header p  { font-size: 12px; color: #888; }
+    #count-pill {
+      margin-left: auto; background: #0071e3; color: #fff;
+      font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 20px; white-space: nowrap;
+    }
+
+    #filters {
+      position: fixed; top: 56px; left: 0; right: 0; z-index: 200;
+      background: rgba(255,255,255,0.95);
+      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      padding: 8px 16px; display: flex; gap: 6px; flex-wrap: nowrap; overflow-x: auto;
+      border-bottom: 1px solid rgba(0,0,0,0.08);
+    }
+    #filters::-webkit-scrollbar { display: none; }
+    .chip {
+      flex-shrink: 0; padding: 5px 12px; border-radius: 20px;
+      border: 1px solid #d2d2d7; background: #fff;
+      cursor: pointer; font-size: 12px; font-weight: 500;
+      transition: all 0.15s; color: #333;
+    }
+    .chip:hover { border-color: #999; }
+    .chip.active { border-color: transparent; color: #fff; }
+    .chip[data-f="all"].active    { background: #1d1d1f; }
+    /* __AREA_CHIP_STYLES__: AI 根据 areaColor 生成，格式: .chip[data-f="区名"].active { background: #hex; } */
+    .chip[data-f="10k"].active    { background: #00897b; }
+    .chip[data-f="xhs"].active    { background: #ff2442; }
+    .chip[data-f="douban"].active { background: #2e7d32; }
+
+    #map { position: fixed; top: 0; left: 0; right: 0; bottom: 0; }
+
+    #panel {
+      position: fixed; right: 0; top: 0; bottom: 0; width: 340px; z-index: 300;
+      background: #fff; box-shadow: -4px 0 24px rgba(0,0,0,0.12);
+      transform: translateX(100%);
+      transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    #panel.open { transform: translateX(0); }
+    #panel-close {
+      position: absolute; top: 14px; right: 14px;
+      width: 28px; height: 28px; border-radius: 50%;
+      background: rgba(0,0,0,0.06); border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; color: #555;
+    }
+    #panel-close:hover { background: rgba(0,0,0,0.12); }
+    #panel-body { padding: 24px 20px 20px; overflow-y: auto; flex: 1; }
+
+    .panel-badge {
+      display: inline-block; font-size: 11px; font-weight: 600;
+      padding: 3px 8px; border-radius: 6px; margin-bottom: 10px;
+    }
+    .pb-安居客 { background: #fff3e0; color: #e65100; }
+    .pb-房天下 { background: #e8f5e9; color: #2e7d32; }
+    .pb-小红书 { background: #fce4ec; color: #c62828; }
+    .pb-豆瓣   { background: #e8eaf6; color: #283593; }
+
+    .panel-rec {
+      display: inline-flex; font-size: 11px; background: #0071e3; color: #fff;
+      padding: 3px 8px; border-radius: 6px; margin-bottom: 10px; margin-left: 4px;
+    }
+    .panel-name { font-size: 20px; font-weight: 700; color: #1d1d1f; line-height: 1.2; margin-bottom: 4px; }
+    .panel-price { font-size: 30px; font-weight: 700; color: #1d1d1f; margin: 8px 0; }
+    .panel-price .unit { font-size: 14px; color: #86868b; font-weight: 400; }
+    .panel-tba { font-size: 20px; color: #86868b; margin: 8px 0; }
+    .panel-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+    .ptag { font-size: 12px; padding: 3px 9px; border-radius: 6px; background: #f5f5f7; color: #515154; }
+    .ptag.direct { background: #e8f5e9; color: #1b5e20; font-weight: 600; }
+    .panel-desc { font-size: 13px; color: #515154; line-height: 1.6; margin-bottom: 14px; word-break: break-all; }
+    .panel-dist { font-size: 12px; color: #86868b; margin-bottom: 16px; }
+    .panel-dist b { color: #0071e3; }
+    .panel-btn {
+      display: block; text-align: center; padding: 12px;
+      background: #0071e3; color: #fff; border-radius: 10px;
+      font-size: 14px; font-weight: 600; text-decoration: none;
+    }
+    .panel-btn:hover { background: #005bb5; }
+    .panel-btn.disabled { background: #f5f5f7; color: #86868b; pointer-events: none; }
+
+    .m-dot {
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      font-weight: 700; cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      border: 2px solid #fff; transition: transform 0.15s; white-space: nowrap;
+    }
+    .m-dot:hover { transform: scale(1.15); }
+    .m-dot.big { width: 36px; height: 36px; font-size: 11px; border-width: 3px; }
+    .m-dot.sm  { width: 28px; height: 28px; font-size: 10px; }
+
+    .work-wrap { position: relative; display: flex; align-items: center; justify-content: center; }
+    .work-pulse {
+      position: absolute; border-radius: 50%; opacity: 0;
+      animation: ripple 2s ease-out infinite;
+    }
+    @keyframes ripple {
+      0%   { width:20px; height:20px; opacity:0.6; background:rgba(255,59,48,0.5); }
+      100% { width:56px; height:56px; opacity:0; background:rgba(255,59,48,0); }
+    }
+    .work-core {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: #ff3b30; border: 3px solid #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; box-shadow: 0 2px 8px rgba(255,59,48,0.5); z-index: 1;
+    }
+
+    #legend {
+      position: fixed; left: 16px; bottom: 36px; z-index: 200;
+      background: rgba(255,255,255,0.95); backdrop-filter: blur(8px);
+      border-radius: 12px; padding: 12px 14px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.12); font-size: 12px;
+    }
+    .leg-row { display: flex; align-items: center; gap: 7px; line-height: 1.9; color: #333; }
+    .leg-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .leg-hint { font-size: 11px; color: #999; margin-top: 6px; border-top: 1px solid #f0f0f0; padding-top: 6px; }
+
+    #geo-status {
+      position: fixed; bottom: 12px; right: 16px; z-index: 200;
+      font-size: 11px; color: #86868b; background: rgba(255,255,255,0.9);
+      padding: 4px 10px; border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+
+<div id="header">
+  <div>
+    <h1>__CITY__租房地图</h1>
+    <p>工作地: __WORK_NAME__ · __BUDGET__元 · __RENT_TYPE__</p>
+  </div>
+  <div id="count-pill">-- 套</div>
+</div>
+
+<div id="filters">
+  <div class="chip active" data-f="all" onclick="doFilter('all',this)">全部</div>
+  <!-- __AREA_FILTER_CHIPS__: AI 根据城市区域生成 chip，格式: -->
+  <!-- <div class="chip" data-f="区名" onclick="doFilter('区名',this)">区名</div> -->
+  <div class="chip" data-f="10k" onclick="doFilter('10k',this)">≤10000元</div>
+  <div class="chip" data-f="xhs" onclick="doFilter('xhs',this)">小红书</div>
+  <div class="chip" data-f="douban" onclick="doFilter('douban',this)">豆瓣</div>
+</div>
+
+<div id="map"></div>
+
+<div id="panel">
+  <button id="panel-close" onclick="closePanel()">✕</button>
+  <div id="panel-body"></div>
+</div>
+
+<div id="legend">
+  <div class="leg-row"><span class="leg-dot" style="background:#ff3b30"></span>__WORK_NAME__（工作地）</div>
+  <!-- __AREA_LEGEND_ROWS__: AI 根据 areaColor 生成，格式: -->
+  <!-- <div class="leg-row"><span class="leg-dot" style="background:#hex"></span>区名</div> -->
+  <div class="leg-hint">数字 = 月租(千元) · 大圈 = 有价格</div>
+</div>
+
+<div id="geo-status"></div>
+
+<script>
+  const WORK = [__WORK_LNG__, __WORK_LAT__]; // 工作地 GCJ-02 坐标
+  // __AREA_COLORS__: 按用户城市的区域生成，格式: { '区名':'#hex', ... }
+  const areaColor = {
+    // 示例（上海）: '静安':'#0071e3', '徐汇':'#9b59b6', ...
+    // AI 根据 config/profile.yml 中的城市自动填充
+  };
+
+  // ── 原有精选房源（安居客/房天下 - 已有精确坐标）──
+  const legacyListings = [];
+
+  const map = new AMap.Map('map', { zoom: 13, center: WORK, mapStyle: 'amap://styles/normal', viewMode: '2D' });
+  map.addControl(new AMap.Scale({ position: 'LB' }));
+
+  new AMap.Marker({
+    position: WORK, offset: new AMap.Pixel(-18, -18),
+    content: '<div class="work-wrap"><div class="work-pulse"></div><div class="work-core">🏢</div></div>',
+    zIndex: 200,
+  }).addTo(map);
+
+  function distKm(p1, p2) {
+    const R = 6371, dLat = (p2[1]-p1[1])*Math.PI/180, dLng = (p2[0]-p1[0])*Math.PI/180;
+    const a = Math.sin(dLat/2)**2 + Math.cos(p1[1]*Math.PI/180)*Math.cos(p2[1]*Math.PI/180)*Math.sin(dLng/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
+
+  const markerObjs = [];
+
+  function addMarker(l) {
+    const color = areaColor[l.area] || '#666';
+    const hasPrice = l.price && l.price > 0;
+    const label = hasPrice ? (l.price/1000).toFixed(1)+'k' : '?';
+    const cls = hasPrice ? 'big' : 'sm';
+    const pos = l.pos || [l.lng, l.lat];
+
+    const m = new AMap.Marker({
+      position: pos,
+      offset: new AMap.Pixel(hasPrice ? -18 : -14, hasPrice ? -18 : -14),
+      content: `<div class="m-dot ${cls}" style="background:${color}">${label}</div>`,
+      zIndex: hasPrice ? 120 : 100,
+    });
+    m.on('click', () => openPanel(l));
+    m.addTo(map);
+    m._data = l;
+    markerObjs.push(m);
+    return m;
+  }
+
+  // 加载精选数据
+  legacyListings.forEach(l => addMarker(l));
+  updateCount();
+
+  // ── 高德 PlaceSearch 地理编码 ──
+  const placeSearch = new AMap.PlaceSearch({ city: '__CITY__', citylimit: true, pageSize: 1 });
+  const geocoder = new AMap.Geocoder({ city: '__CITY__' });
+
+  // 从标题/描述提取搜索关键词
+  function extractSearchTerm(item) {
+    const text = item.title || '';
+    // 尝试提取小区名（X花园/X大厦/X公寓 等）
+    const suffixes = '花园|天城|大厦|中心|公寓|世家|广场|名苑|雅苑|公馆|翠园|家园|华庭|林语|新村|湾畔|峰|峯|苑|阁|庭|台|府|寓|堡|岸|境界|名城|城邦|名府|壹号';
+    const re = new RegExp(`([\\u4e00-\\u9fff]{2,6}(?:${suffixes}))`, 'g');
+    const matches = text.match(re);
+    if (matches) {
+      // 过滤无意义匹配
+      const bad = new Set(['酒店式公寓','花园小区','花园社区','老小区']);
+      const good = matches.find(m => !bad.has(m));
+      if (good) return '上海' + good;
+    }
+    // 降级：用区域名 + 标题前几个汉字
+    const area = item.area || '';
+    // 尝试提取地铁站等地标
+    const metroMatch = text.match(/([\u4e00-\u9fff]{2,4}(?:地铁站|站旁|路))/);
+    if (metroMatch) return '上海' + metroMatch[1];
+    return '上海' + area;
+  }
+
+  // 逐个地理编码（限速 100ms 间隔）
+  async function geocodeListings(items) {
+    const statusEl = document.getElementById('geo-status');
+    const existUrls = new Set(legacyListings.filter(l=>l.url).map(l=>l.url));
+    let done = 0, total = items.length;
+
+    for (const item of items) {
+      if (existUrls.has(item.url)) { done++; continue; }
+
+      const searchTerm = extractSearchTerm(item);
+      statusEl.textContent = `定位中 ${done}/${total}: ${searchTerm}`;
+
+      try {
+        const pos = await new Promise((resolve) => {
+          placeSearch.search(searchTerm, (status, result) => {
+            if (status === 'complete' && result.poiList && result.poiList.pois.length > 0) {
+              const poi = result.poiList.pois[0];
+              resolve([poi.location.lng, poi.location.lat]);
+            } else {
+              resolve(null);
+            }
+          });
+        });
+
+        const listing = {
+          name: item.community || item.title.slice(0, 12),
+          platform: item.platform,
+          area: item.area,
+          pos: pos || areaFallback(item.area),
+          price: item.price || null,
+          rooms: item.room,
+          size: null, metro: null,
+          desc: item.title,
+          url: item.url,
+          rec: false,
+          geocoded: !!pos,
+        };
+        addMarker(listing);
+      } catch(e) {
+        console.warn('Geocode error:', searchTerm, e);
+      }
+
+      done++;
+      await sleep(150);
+    }
+
+    statusEl.textContent = `定位完成: ${markerObjs.length} 套`;
+    setTimeout(() => statusEl.textContent = '', 3000);
+    updateCount();
+  }
+
+  function areaFallback(area) {
+    // __AREA_FALLBACK__: AI 根据城市区域中心点生成，格式: { '区名':[lng,lat], ... }
+    const fallback = {};
+    const base = fallback[area] || [__WORK_LNG__, __WORK_LAT__];
+    return [base[0] + (Math.random()-0.5)*0.006, base[1] + (Math.random()-0.5)*0.004];
+  }
+
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  // 加载 listings.json 并地理编码
+  fetch('listings.json')
+    .then(r => r.json())
+    .then(data => geocodeListings(data))
+    .catch(e => console.warn('Load listings.json failed:', e));
+
+  function updateCount() {
+    document.getElementById('count-pill').textContent = markerObjs.length + ' 套';
+  }
+
+  // ── 详情面板 ──
+  function openPanel(l) {
+    const pos = l.pos;
+    const dist = distKm(WORK, pos);
+    const distTxt = dist < 1 ? `约 ${Math.round(dist*1000)} m` : `约 ${dist.toFixed(1)} km`;
+
+    const priceHtml = l.price
+      ? `<div class="panel-price">${l.price.toLocaleString()}<span class="unit"> 元/月</span></div>`
+      : `<div class="panel-tba">价格待询</div>`;
+
+    const tags = [
+      l.rooms ? `<span class="ptag">${l.rooms}</span>` : '',
+      l.size ? `<span class="ptag">${l.size}</span>` : '',
+      l.metro ? `<span class="ptag">${l.metro}</span>` : '',
+      l.direct ? `<span class="ptag direct">🏠 房东直租</span>` : '',
+    ].join('');
+
+    const btn = l.url
+      ? `<a class="panel-btn" href="${l.url}" target="_blank">查看原帖 →</a>`
+      : `<a class="panel-btn disabled">暂无链接（${l.platform}）</a>`;
+
+    document.getElementById('panel-body').innerHTML = `
+    <div>
+      <span class="panel-badge pb-${l.platform}">${l.platform}</span>
+      ${l.rec ? '<span class="panel-rec">推荐</span>' : ''}
+      ${l.geocoded === false ? '<span style="font-size:11px;color:#999;margin-left:4px">大致位置</span>' : ''}
+    </div>
+    <div class="panel-name">${l.name}</div>
+    ${priceHtml}
+    <div class="panel-tags">${tags}</div>
+    <div class="panel-desc">${l.desc || ''}</div>
+    <div class="panel-dist">📍 距__WORK_NAME__（直线）<b>${distTxt}</b></div>
+    ${btn}
+  `;
+    document.getElementById('panel').classList.add('open');
+    map.panTo(pos);
+  }
+
+  function closePanel() { document.getElementById('panel').classList.remove('open'); }
+
+  function doFilter(f, el) {
+    document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    closePanel();
+    let count = 0;
+    markerObjs.forEach(m => {
+      const l = m._data;
+      const show =
+        f === 'all' ? true :
+          f === '10k' ? (l.price && l.price <= 10000) :
+            f === 'xhs' ? l.platform === '小红书' :
+              f === 'douban' ? l.platform === '豆瓣' :
+                l.area === f;
+      if (show) { m.show(); count++; } else m.hide();
+    });
+    document.getElementById('count-pill').textContent = count + ' 套';
+  }
+
+  map.on('click', closePanel);
+</script>
+</body>
+</html>
