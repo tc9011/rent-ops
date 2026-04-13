@@ -236,7 +236,7 @@
   function extractSearchTerm(item) {
     const text = item.title || '';
     // 尝试提取小区名（X花园/X大厦/X公寓 等）
-    const suffixes = '花园|天城|大厦|中心|公寓|世家|广场|名苑|雅苑|公馆|翠园|家园|华庭|林语|新村|湾畔|峰|峯|苑|阁|庭|台|府|寓|堡|岸|境界|名城|城邦|名府|壹号';
+    const suffixes = '花园|天城|大厦|中心|公寓|世家|广场|名苑|雅苑|公馆|翠园|家园|华庭|林语|新村|湾畔|小区|峰|峯|苑|阁|庭|台|府|寓|堡|岸|境界|名城|城邦|名府|壹号';
     const re = new RegExp(`([\\u4e00-\\u9fff]{2,6}(?:${suffixes}))`, 'g');
     const matches = text.match(re);
     if (matches) {
@@ -262,38 +262,50 @@
     for (const item of items) {
       if (existUrls.has(item.url)) { done++; continue; }
 
-      const searchTerm = extractSearchTerm(item);
-      statusEl.textContent = `定位中 ${done}/${total}: ${searchTerm}`;
-
-      try {
-        const pos = await new Promise((resolve) => {
-          placeSearch.search(searchTerm, (status, result) => {
-            if (status === 'complete' && result.poiList && result.poiList.pois.length > 0) {
-              const poi = result.poiList.pois[0];
-              resolve([poi.location.lng, poi.location.lat]);
-            } else {
-              resolve(null);
-            }
+      // 优先使用 listings.json 中的 coords 字段
+      let pos = null;
+      let geocoded = false;
+      if (item.coords && Array.isArray(item.coords) && item.coords.length === 2 && item.coords[0] && item.coords[1]) {
+        pos = item.coords;
+        geocoded = true;
+        statusEl.textContent = `定位中 ${done}/${total}: ${item.community || '...'} (cached)`;
+      } else {
+        const searchTerm = extractSearchTerm(item);
+        statusEl.textContent = `定位中 ${done}/${total}: ${searchTerm}`;
+        try {
+          pos = await new Promise((resolve) => {
+            placeSearch.search(searchTerm, (status, result) => {
+              if (status === 'complete' && result.poiList && result.poiList.pois.length > 0) {
+                const poi = result.poiList.pois[0];
+                resolve([poi.location.lng, poi.location.lat]);
+              } else {
+                resolve(null);
+              }
+            });
           });
-        });
-
-        const listing = {
-          name: item.community || item.title.slice(0, 12),
-          platform: item.platform,
-          area: item.area,
-          pos: pos || areaFallback(item.area),
-          price: item.price || null,
-          rooms: item.room,
-          size: null, metro: null,
-          desc: item.title,
-          url: item.url,
-          rec: false,
-          geocoded: !!pos,
-        };
-        addMarker(listing);
-      } catch(e) {
-        console.warn('Geocode error:', searchTerm, e);
+          geocoded = !!pos;
+        } catch(e) {
+          console.warn('Geocode error:', item.community, e);
+        }
+        await sleep(150);
       }
+
+      const listing = {
+        name: item.community || item.title.slice(0, 12),
+        platform: item.platform,
+        area: item.area,
+        pos: pos || areaFallback(item.area),
+        price: item.price || null,
+        rooms: item.room,
+        size: null, metro: null,
+        desc: item.title,
+        url: item.url,
+        rec: false,
+        geocoded: geocoded,
+        score: item.score || null,
+        status: item.status || null,
+      };
+      addMarker(listing);
 
       done++;
       await sleep(150);
