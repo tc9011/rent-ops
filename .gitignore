@@ -11,7 +11,9 @@ data/*.json
 
 # Reports (never commit)
 reports/*.md
+reports/assets/
 !reports/.gitkeep
+!reports/assets/.gitkeep
 
 # User config (created from templates)
 config/profile.yml
