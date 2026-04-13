@@ -45,6 +45,73 @@ playwright install chromium
 
 首次运行会引导你配置城市、预算、户型等租房需求。
 
+## 豆瓣登录配置
+
+豆瓣爬虫（`/rent scrape`）需要登录态才能访问租房小组内容。提供三种方式：
+
+### 方式一：交互式登录（推荐新手）
+
+在终端直接运行脚本，浏览器会打开豆瓣页面，手动登录后按 Enter 继续：
+
+```bash
+python3 scripts/scrape_douban.py --stealth
+```
+
+登录成功后会自动保存 session 到 `data/douban_session.json`，后续运行无需重复登录。
+
+### 方式二：手动导出 Cookie
+
+从浏览器导出豆瓣 cookie，保存为 JSON 文件：
+
+1. 在 Chrome / Edge / Arc 中登录豆瓣
+2. 安装浏览器扩展 [EditThisCookie](https://www.editthiscookie.com/) 或使用 DevTools
+3. 导出 `.douban.com` 域下的 cookie，保存为 JSON 数组格式：
+
+```json
+[
+  {
+    "name": "dbcl2",
+    "value": "你的值",
+    "domain": ".douban.com",
+    "path": "/",
+    "secure": true,
+    "httpOnly": true
+  }
+]
+```
+
+4. 运行时指定 cookie 文件：
+
+```bash
+python3 scripts/scrape_douban.py --cookie-file cookies.json
+```
+
+### 方式三：Playwright Storage State
+
+如果你有 Playwright 导出的 storage state 文件（包含 cookie + localStorage）：
+
+```bash
+python3 scripts/scrape_douban.py --session-file session.json
+```
+
+### 在 AI 助手环境中使用（Claude Code / WorkBuddy）
+
+AI 助手环境没有交互式终端，需要提前准备好登录态：
+
+```bash
+# 先在终端交互式登录一次，保存 session
+python3 scripts/scrape_douban.py --stealth
+
+# 之后在 AI 助手中使用 --non-interactive 模式
+python3 scripts/scrape_douban.py --non-interactive
+```
+
+或直接提供 cookie / session 文件：
+
+```bash
+python3 scripts/scrape_douban.py --non-interactive --cookie-file cookies.json
+```
+
 ## 数据架构
 
 ```

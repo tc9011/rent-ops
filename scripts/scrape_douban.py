@@ -17,6 +17,11 @@
 
   强制 stealth 模式：
     python3 scripts/scrape_douban.py --stealth
+
+  非交互式模式（Claude Code / WorkBuddy 等 AI 助手环境）：
+    python3 scripts/scrape_douban.py --non-interactive
+    python3 scripts/scrape_douban.py --non-interactive --cookie-file cookies.json
+    python3 scripts/scrape_douban.py --non-interactive --session-file session.json
 """
 
 import asyncio
@@ -27,6 +32,24 @@ import sys
 import argparse
 from datetime import datetime
 from pathlib import Path
+
+
+def is_interactive():
+    """检测是否在交互式终端中运行（非 Claude Code / WorkBuddy 等 AI 助手环境）"""
+    return sys.stdin.isatty()
+
+
+def safe_input(prompt: str) -> bool:
+    """安全的 input 替代：非交互式环境直接跳过，返回 False；交互式环境等待用户输入，返回 True"""
+    if not is_interactive():
+        print(f"  ⓘ 非交互式环境，跳过等待：{prompt.strip()}")
+        return False
+    try:
+        input(prompt)
+        return True
+    except EOFError:
+        print(f"  ⓘ 输入流已关闭，跳过等待")
+        return False
 
 try:
     from playwright.async_api import async_playwright
@@ -117,7 +140,9 @@ async def handle_sorry_page(page, original_url: str) -> bool:
         pass  # 若点击失败，让用户自行操作
 
     # 等待用户手动解题
-    input("  → 验证完成后按 Enter: ")
+    if not safe_input("  → 验证完成后按 Enter: "):
+        print("  ✗ 非交互式环境无法完成人机验证，跳过此页")
+        return False
 
     # 等待页面跳转离开 sorry 页
     try:
@@ -281,10 +306,21 @@ async def stealth_mode(playwright, cookies):
 
 # ── 主流程 ────────────────────────────────────────────────────────────────────
 async def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="豆瓣租房小组爬虫")
     parser.add_argument("--cdp", action="store_true", help="强制使用 CDP 模式")
     parser.add_argument("--stealth", action="store_true", help="强制使用 stealth 模式")
+    parser.add_argument("--non-interactive", action="store_true",
+                        help="非交互式模式，跳过所有 input() 等待（适用于 Claude Code 等 AI 助手环境）")
+    parser.add_argument("--cookie-file", type=str,
+                        help="从 JSON 文件加载豆瓣 cookie（格式见 README）")
+    parser.add_argument("--session-file", type=str,
+                        help="从 Playwright storage state 文件加载登录态")
     args = parser.parse_args()
+
+    # --non-interactive 强制覆盖 is_interactive 检测
+    if args.non_interactive:
+        global is_interactive
+        is_interactive = lambda: False
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     seen_urls = set()
@@ -312,8 +348,27 @@ async def main():
         # 2. 降级：playwright-stealth + cookies
         if not browser:
             if not args.cdp:
-                print("\n🛡  使用 stealth 模式（playwright-stealth + Arc cookies）...")
-                cookies = get_arc_cookies()
+                print("\n🛡  使用 stealth 模式（playwright-stealth + cookies）...")
+                # cookie 来源优先级：--cookie-file > --session-file > Arc 自动导入
+                cookies = []
+                if args.cookie_file:
+                    cookie_path = Path(args.cookie_file)
+                    if cookie_path.exists():
+                        cookies = json.loads(cookie_path.read_text())
+                        print(f"✓ 从 {args.cookie_file} 加载 {len(cookies)} 条 cookie")
+                    else:
+                        print(f"⚠ Cookie 文件不存在：{args.cookie_file}")
+                if args.session_file:
+                    session = Path(args.session_file)
+                    if session.exists():
+                        # 复制到 SESSION_PATH 供 stealth_mode 使用
+                        SESSION_PATH.parent.mkdir(parents=True, exist_ok=True)
+                        SESSION_PATH.write_text(session.read_text())
+                        print(f"✓ 从 {args.session_file} 加载 session")
+                    else:
+                        print(f"⚠ Session 文件不存在：{args.session_file}")
+                if not cookies and not args.session_file:
+                    cookies = get_arc_cookies()
                 browser, context, page = await stealth_mode(p, cookies)
                 mode_used = "stealth"
             else:
@@ -329,8 +384,16 @@ async def main():
             # 检查是否已登录（有用户名显示）
             logged_in = await page.query_selector(".nav-user-account, #db-nav-sns .pl2")
             if not logged_in:
-                print("\n⚠ 未检测到豆瓣登录状态，请在浏览器中手动登录")
-                input("  → 登录完成后按 Enter: ")
+                print("\n⚠ 未检测到豆瓣登录状态")
+                if is_interactive():
+                    print("  请在浏览器中手动登录")
+                    safe_input("  → 登录完成后按 Enter: ")
+                else:
+                    print("  → 非交互式环境，请通过以下方式提供登录态：")
+                    print("    1. --cookie-file cookies.json  （手动导出的 cookie）")
+                    print("    2. --session-file session.json （Playwright storage state）")
+                    print("    3. 先在交互式终端运行一次，登录后会自动保存 session")
+                    print("  → 本次将以未登录状态继续，可能被限制访问")
 
         # 翻页浏览组内最新讨论
         all_topics = []
