@@ -7,13 +7,13 @@
 执行前检查依赖是否就绪：
 
 ```bash
-python3 -c "from playwright.async_api import async_playwright; print('playwright OK')"
-python3 -c "from playwright_stealth import Stealth; print('stealth OK')"
+${CLAUDE_SKILL_DIR}/scripts/python.sh -c "from playwright.async_api import async_playwright; print('playwright OK')"
+${CLAUDE_SKILL_DIR}/scripts/python.sh -c "from playwright_stealth import Stealth; print('stealth OK')"
 ```
 
-如果缺失，提示用户安装：
+如果缺失，提示用户运行安装脚本：
 ```
-pip3 install playwright playwright-stealth && playwright install chromium
+${CLAUDE_SKILL_DIR}/scripts/setup.sh
 ```
 
 ## 豆瓣爬虫
@@ -28,14 +28,14 @@ pip3 install playwright playwright-stealth && playwright install chromium
 
 ```bash
 # 默认模式（自动尝试 CDP → stealth → 手动验证）
-python3 ${CLAUDE_SKILL_DIR}/scripts/scrape_douban.py
+${CLAUDE_SKILL_DIR}/scripts/python.sh ${CLAUDE_SKILL_DIR}/scripts/scrape_douban.py
 
 # 强制 stealth 模式（推荐，无需重启 Arc）
-python3 ${CLAUDE_SKILL_DIR}/scripts/scrape_douban.py --stealth
+${CLAUDE_SKILL_DIR}/scripts/python.sh ${CLAUDE_SKILL_DIR}/scripts/scrape_douban.py --stealth
 
 # 强制 CDP 模式（需先以调试模式启动 Arc）
 # 先运行：/Applications/Arc.app/Contents/MacOS/Arc --remote-debugging-port=9222
-python3 ${CLAUDE_SKILL_DIR}/scripts/scrape_douban.py --cdp
+${CLAUDE_SKILL_DIR}/scripts/python.sh ${CLAUDE_SKILL_DIR}/scripts/scrape_douban.py --cdp
 ```
 
 ### 输出

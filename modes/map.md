@@ -19,7 +19,7 @@
 高德地图 JS API 不支持 `file://` 协议，必须通过 HTTP 访问：
 
 ```bash
-cd ${CLAUDE_SKILL_DIR}/data && python3 -m http.server 8765 &
+cd ${CLAUDE_SKILL_DIR}/data && ${CLAUDE_SKILL_DIR}/scripts/python.sh -m http.server 8765 &
 ```
 
 检查端口是否已被占用（`lsof -i :8765`），如已占用则跳过启动。

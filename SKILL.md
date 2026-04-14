@@ -98,11 +98,17 @@ allowed-tools: Read Write Edit Bash WebSearch WebFetch Glob Grep
 
 ### 必须
 
-| 依赖 | 用途 | 安装 |
-|------|------|------|
-| Python 3.9+ | 爬虫脚本运行 | macOS 自带或 `brew install python` |
-| Playwright | 浏览器自动化（豆瓣爬虫） | `pip3 install playwright && playwright install chromium` |
-| playwright-stealth | 反检测补丁 | `pip3 install playwright-stealth` |
+运行安装脚本即可自动配置所有依赖（Python venv + Playwright + Chromium）：
+
+```bash
+${CLAUDE_SKILL_DIR}/scripts/setup.sh
+```
+
+检查安装状态：
+
+```bash
+${CLAUDE_SKILL_DIR}/scripts/doctor.sh
+```
 
 ### 推荐（增强功能）
 
@@ -118,6 +124,7 @@ allowed-tools: Read Write Edit Bash WebSearch WebFetch Glob Grep
 
 **每次会话首次触发 /rent 时**，在执行任何 mode 之前，静默检查以下文件：
 
+0. `${CLAUDE_SKILL_DIR}/.venv/bin/python3` 是否存在？如果不存在，提示用户运行 `${CLAUDE_SKILL_DIR}/scripts/setup.sh`。
 1. `${CLAUDE_SKILL_DIR}/config/profile.yml` 是否存在？
 2. `${CLAUDE_SKILL_DIR}/modes/_profile.md` 是否存在？
 3. `${CLAUDE_SKILL_DIR}/data/listings.md` 是否存在？

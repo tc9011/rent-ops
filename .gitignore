@@ -18,6 +18,9 @@ config/profile.yml
 modes/_profile.md
 platforms.yml
 
+# Python venv (created by setup.sh)
+.venv/
+
 # Session / cache
 data/douban_session.json
 __pycache__/

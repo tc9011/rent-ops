@@ -2,6 +2,52 @@
 
 按三级策略扫描配置中的租房平台，筛选符合条件的房源，去重后添加到 pipeline。
 
+## ⚠ 强制执行流程（必须严格按此顺序）
+
+**不要跳过任何步骤，不要调换顺序。**
+
+### Step 1: 跑专用爬虫（豆瓣）
+
+立即执行，不要先做 WebSearch：
+
+```bash
+${CLAUDE_SKILL_DIR}/scripts/python.sh ${CLAUDE_SKILL_DIR}/scripts/scrape_douban.py --stealth --non-interactive
+```
+
+读取输出 `${CLAUDE_SKILL_DIR}/data/douban_filtered.jsonl`，按 profile 筛选后加入候选列表。
+
+### Step 2: 跑专用爬虫（小红书，如已安装）
+
+检查 `~/code/MediaCrawler` 是否存在。存在则执行：
+
+```bash
+cd ~/code/MediaCrawler && /opt/homebrew/bin/python3.11 main.py --platform xhs --lt qrcode --type search
+```
+
+不存在则告知用户：
+> "小红书爬虫（MediaCrawler）未安装，跳过。如需安装：`git clone https://github.com/NanmiCoder/MediaCrawler ~/code/MediaCrawler`"
+
+### Step 3: 抓取贝壳/自如（WebFetch）
+
+对 platforms.yml 中 `enabled: true` 且有 `scan_url` 的平台，用 WebFetch 抓取列表页。
+
+如果 WebFetch 返回空或被反爬拦截，**提示用户**：
+> "贝壳/自如列表页被反爬拦截，无法直接抓取。你可以：
+> 1. 在浏览器中打开 {scan_url}，手动复制几条房源链接给我评估
+> 2. 跳过这个平台
+>
+> 怎么操作？"
+
+### Step 4: WebSearch 补充（兜底）
+
+仅在 Step 1-3 结果不足时，用 WebSearch 补充搜索。
+
+### Step 5: 汇总去重，更新 pipeline
+
+合并所有结果 → 去重 → 筛选 → 写入 pipeline.md + scan-history.tsv。
+
+---
+
 ## 执行建议
 
 如果平台数量较多，建议作为 subagent 执行：
@@ -21,38 +67,37 @@ Agent(
 4. 读取 `${CLAUDE_SKILL_DIR}/data/listings.md` — 已在 tracker 中的房源
 5. 读取 `${CLAUDE_SKILL_DIR}/data/pipeline.md` — 已在队列中的房源
 
-## L1 — Cookie + Playwright 扫描
+---
+
+## L1 — WebFetch 抓取（需要 cookie 的平台）
 
 对 `${CLAUDE_SKILL_DIR}/platforms.yml` 中 `enabled: true` 且 strategy 包含 `cookie_playwright` 的平台：
 
-### 前提：Cookie 导入
+### 前提：Cookie 初始化
 
-在扫描前，检查是否有该平台的 cookie：
-```
-$B cookies
-```
+**必须明确提示用户**，不要静默跳过：
 
-如果没有目标平台的 cookie，提示用户：
-
-> "扫描 {平台名} 需要你的登录态。我可以从你的浏览器导入 cookie：
-> `$B cookie-import-browser --domain {cookie_domain}`
-> 或者你也可以先跳过这个平台。导入还是跳过？"
+> "扫描 {平台名} 需要你的登录态。请先在浏览器中登录 {平台名}，然后我用 WebFetch 抓取列表页。
+>
+> 如果你还没登录，可以先跳过这个平台，后续再扫。
+>
+> **登录还是跳过？**"
 
 ### 扫描流程
 
+用 WebFetch 抓取列表页：
+
 ```
-$B goto {scan_url}
-$B snapshot -i
+WebFetch(url="{scan_url}", prompt="提取所有房源列表项，包括：标题、租金、户型、链接URL。以结构化格式返回。")
 ```
 
-1. 根据 profile.yml 中的条件设置平台筛选器（价格范围、户型、区域）：
-   - 用 `$B click` / `$B fill` / `$B select` 操作筛选控件
-   - 如果页面有区域筛选，选择工作地点附近的区域
+1. 根据 profile.yml 中的条件构造带筛选参数的 URL：
+   - 贝壳：`https://{city}.ke.com/zufang/{区域代码}/rt200600000001l0/` （整租+一居）
+   - 自如：`https://{city}.ziroom.com/z/p1-r0-t10/` （整租筛选参数）
 
-2. 遍历房源列表：
-   - `$B snapshot -i` 获取列表页元素
-   - 提取每个房源：标题、租金、URL
-   - 如果有分页，翻页继续（最多 5 页）
+2. 从 WebFetch 结果中提取房源信息：
+   - 标题、租金、URL、户型
+   - 如果结果不完整，尝试翻页 URL（如 `pg2/`、`pg3/`），最多 5 页
 
 3. 对每个房源 URL：
    - 检查是否在 scan-history.tsv / listings.md / pipeline.md 中 → 跳过
@@ -64,7 +109,7 @@ $B snapshot -i
 
 **贝壳找房 (ke.com)：**
 - 列表页 URL 格式：`https://{city}.ke.com/zufang/`
-- 筛选器：价格、户型、区域都有下拉菜单
+- 筛选参数拼接在 URL 路径中（区域、价格、户型）
 - 房源链接格式：`https://{city}.ke.com/zufang/{id}.html`
 
 **自如 (ziroom.com)：**
@@ -84,21 +129,21 @@ $B snapshot -i
 
 如果 API 调用失败或返回异常，静默回退到 L1 或跳过。不要因 API 问题中断整个扫描。
 
-## L2.5 — 专用爬虫扫描
+## L2.5 — 专用爬虫扫描（优先级最高）
 
-对有专用爬虫脚本的平台，优先使用：
+对有专用爬虫脚本的平台，**优先使用，不要先走 L3 WebSearch**：
 
 ### 豆瓣（scripts/scrape_douban.py）
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/scrape_douban.py --stealth
+${CLAUDE_SKILL_DIR}/scripts/python.sh ${CLAUDE_SKILL_DIR}/scripts/scrape_douban.py --stealth --non-interactive
 ```
 
 - 优先尝试 CDP 模式（接管 Arc 浏览器），降级为 playwright-stealth + Arc cookie 注入
 - 自动翻页浏览「深圳租房」小组最新帖子
 - 触发 misc/sorry 验证页时暂停等待人工过滑块
 - 输出：`${CLAUDE_SKILL_DIR}/data/douban_raw.jsonl` + `${CLAUDE_SKILL_DIR}/data/douban_filtered.jsonl`
-- 依赖：`pip install playwright playwright-stealth`
+- 依赖：运行 `${CLAUDE_SKILL_DIR}/scripts/setup.sh` 安装
 
 ### 小红书（MediaCrawler）
 
@@ -116,6 +161,10 @@ cd ~/code/MediaCrawler && /opt/homebrew/bin/python3.11 main.py --platform xhs --
   - `SAVE_DATA_OPTION = "jsonl"`
 - 输出：`~/code/MediaCrawler/data/xhs/jsonl/search_contents_*.jsonl`
 
+**如果 MediaCrawler 未安装**，提示用户：
+> "小红书爬虫需要 MediaCrawler，目前未安装。要跳过小红书还是先安装？
+> 安装方式：`git clone https://github.com/NanmiCoder/MediaCrawler ~/code/MediaCrawler`"
+
 ### 数据整合
 
 爬虫完成后，需要将结果整合到 rent-ops：
@@ -124,7 +173,12 @@ cd ~/code/MediaCrawler && /opt/homebrew/bin/python3.11 main.py --platform xhs --
 3. 写入 `${CLAUDE_SKILL_DIR}/data/listings.md` 和 `${CLAUDE_SKILL_DIR}/data/listings.json`（地图用）
 4. 更新 `${CLAUDE_SKILL_DIR}/data/pipeline.md`（待评估队列）
 
-## L3 — WebSearch 扫描
+## L3 — WebSearch 扫描（兜底）
+
+**仅在以下情况使用 L3：**
+- 平台没有专用爬虫，也没有 cookie
+- 用户明确选择跳过 cookie 初始化后，作为补充手段
+- 作为其他级别的补充（发现更多房源）
 
 对 strategy 包含 `websearch` 的平台：
 
@@ -141,8 +195,7 @@ cd ~/code/MediaCrawler && /opt/homebrew/bin/python3.11 main.py --platform xhs --
 4. **验证有效性（仅 L3 需要）：**
    WebSearch 结果可能过期。对每个 L3 发现的房源 URL：
    ```
-   $B goto {url}
-   $B text
+   WebFetch(url="{房源URL}", prompt="这个页面是否包含有效的房源信息？提取标题、价格、联系方式。如果页面是404或已下架，说明无效。")
    ```
    - 页面有房源内容（标题+描述+联系方式） → 有效
    - 404 / 已下架 / 内容为空 → 标记 `skipped_expired`
