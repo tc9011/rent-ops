@@ -24,6 +24,7 @@ platforms:
     enabled: true
     scan_query: "site:douban.com {city}租房 {keywords}"
     strategy:
+      - scraper
       - websearch
 
   xiaohongshu:
@@ -31,6 +32,7 @@ platforms:
     enabled: true
     scan_query: "site:xiaohongshu.com {city}租房 {keywords}"
     strategy:
+      - scraper
       - websearch
 
   58:

@@ -28,13 +28,8 @@
 在任意目录下都能使用 `/rent`：
 
 ```bash
-# 1. 克隆到 Claude Code skills 目录
 git clone https://github.com/BENZEMA216/rent-ops.git ~/.claude/skills/rent
-
-# 2. 安装 Python 依赖
-cd ~/.claude/skills/rent
-pip3 install playwright playwright-stealth
-playwright install chromium
+~/.claude/skills/rent/scripts/setup.sh
 ```
 
 ### 项目级安装
@@ -44,7 +39,13 @@ playwright install chromium
 ```bash
 mkdir -p .claude/skills
 git clone https://github.com/BENZEMA216/rent-ops.git .claude/skills/rent
-cd .claude/skills/rent && pip3 install playwright playwright-stealth && playwright install chromium
+.claude/skills/rent/scripts/setup.sh
+```
+
+### 检查安装状态
+
+```bash
+~/.claude/skills/rent/scripts/doctor.sh
 ```
 
 ### 兼容性
@@ -77,7 +78,7 @@ cd .claude/skills/rent && pip3 install playwright playwright-stealth && playwrig
 在终端直接运行脚本，浏览器会打开豆瓣页面，手动登录后按 Enter 继续：
 
 ```bash
-python3 ~/.claude/skills/rent/scripts/scrape_douban.py --stealth
+~/.claude/skills/rent/scripts/python.sh ~/.claude/skills/rent/scripts/scrape_douban.py --stealth
 ```
 
 登录成功后会自动保存 session 到 `data/douban_session.json`，后续运行无需重复登录。
@@ -106,7 +107,7 @@ python3 ~/.claude/skills/rent/scripts/scrape_douban.py --stealth
 4. 运行时指定 cookie 文件：
 
 ```bash
-python3 ~/.claude/skills/rent/scripts/scrape_douban.py --cookie-file cookies.json
+~/.claude/skills/rent/scripts/python.sh ~/.claude/skills/rent/scripts/scrape_douban.py --cookie-file cookies.json
 ```
 
 ### 方式三：Playwright Storage State
@@ -114,7 +115,7 @@ python3 ~/.claude/skills/rent/scripts/scrape_douban.py --cookie-file cookies.jso
 如果你有 Playwright 导出的 storage state 文件（包含 cookie + localStorage）：
 
 ```bash
-python3 ~/.claude/skills/rent/scripts/scrape_douban.py --session-file session.json
+~/.claude/skills/rent/scripts/python.sh ~/.claude/skills/rent/scripts/scrape_douban.py --session-file session.json
 ```
 
 ### 在 AI 助手环境中使用（Claude Code 等）
@@ -123,16 +124,16 @@ AI 助手环境没有交互式终端，需要提前准备好登录态：
 
 ```bash
 # 先在终端交互式登录一次，保存 session
-python3 ~/.claude/skills/rent/scripts/scrape_douban.py --stealth
+~/.claude/skills/rent/scripts/python.sh ~/.claude/skills/rent/scripts/scrape_douban.py --stealth
 
 # 之后在 AI 助手中使用 --non-interactive 模式
-python3 ~/.claude/skills/rent/scripts/scrape_douban.py --non-interactive
+~/.claude/skills/rent/scripts/python.sh ~/.claude/skills/rent/scripts/scrape_douban.py --non-interactive
 ```
 
 或直接提供 cookie / session 文件：
 
 ```bash
-python3 ~/.claude/skills/rent/scripts/scrape_douban.py --non-interactive --cookie-file cookies.json
+~/.claude/skills/rent/scripts/python.sh ~/.claude/skills/rent/scripts/scrape_douban.py --non-interactive --cookie-file cookies.json
 ```
 
 ## 可选依赖

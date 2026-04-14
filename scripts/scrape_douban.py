@@ -54,7 +54,8 @@ def safe_input(prompt: str) -> bool:
 try:
     from playwright.async_api import async_playwright
 except ImportError:
-    print("请先安装：pip install playwright && playwright install chromium")
+    skill_dir = Path(__file__).parent.parent
+    print(f"请先运行安装脚本：{skill_dir}/scripts/setup.sh")
     sys.exit(1)
 
 # ── 配置 ──────────────────────────────────────────────────────────────────────
@@ -264,7 +265,8 @@ async def stealth_mode(playwright, cookies):
         print("✓ playwright-stealth 已加载")
     except ImportError:
         stealth = None
-        print("⚠ playwright-stealth 未安装（pip install playwright-stealth），使用普通模式")
+        skill_dir = Path(__file__).parent.parent
+        print(f"⚠ playwright-stealth 未安装，使用普通模式。运行 {skill_dir}/scripts/setup.sh 安装")
 
     # 如有保存的 session，直接使用（比 cookie 更完整，含 localStorage 等）
     storage_state = None
