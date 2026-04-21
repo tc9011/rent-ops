@@ -101,17 +101,21 @@
 ```bash
 ${CLAUDE_SKILL_DIR}/scripts/python.sh \
   ${CLAUDE_SKILL_DIR}/scripts/amap_query.py commute \
-  --to "{小区名}" --mode transit --pretty
+  --to "{小区名}" --pretty
 ```
 
-- 输出 JSON 含 `duration_min`、`transfers`、`walking_distance_m` 和已按 `_shared.md` 口径映射的 `score_5`
-- 出发地默认从 `config/profile.yml` 的 `work_location` 读；目标从房源信息中取小区名或详细地址
-- mode 默认 `transit`，可改 `driving` / `walking` / `bicycling` 对齐 `commute.transport`
+- **多锚点模式**（默认）：读 `profile.yml` 的 `anchors` 数组，对每个锚点按其 `mode` 分别算路径，按 `importance` 加权。输出含 `anchors: [...]` 数组和 `aggregate_score_5`
+- **单锚点模式**：向后兼容，旧 profile 只有 `work_location` 时自动迁移
+- **显式 from**：`--from "X"` 走 legacy 单点路径，返回 `score_5`
+
+通勤维度分数 = `aggregate_score_5`（多锚点）或 `score_5`（单锚点 / legacy）。
 
 **兜底（key 未配置或 API 返回非 ok 时）**：
 - WebSearch `"{工作地点} 到 {小区名} 地铁"` 估算通勤时间（精度为大致区间）
 
 返回 `{"status": "disabled", ...}` 时不要中断评估，直接走 WebSearch 兜底路径。
+
+**风险提示**：任何锚点 `over_max: true`（耗时超过 `max_minutes`）都应该在报告里醒目标注"{锚点名} 超期望通勤时间 X 分钟"。
 
 ### 房况
 - 基于抓取到的装修、楼层、朝向、面积等字段评分

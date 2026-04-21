@@ -55,7 +55,33 @@
 
 ### 通勤计算
 
-v0.1 通过 WebSearch 查询（如搜索 "{工作地点} 到 {小区名} 地铁"），由 agent 根据搜索结果估算通勤时间。精度为大致区间（如 20-30min）。
+**优先**走高德 Web 服务 API（`scripts/amap_query.py commute`）。**兜底**：`config/amap.yml` 未配 key 或 API 返回非 ok，走 WebSearch 估算。
+
+### 通勤评分映射（CLI 内置一致）
+
+| duration_min | 基础分 |
+|--------------|--------|
+| ≤ 20         | 5      |
+| 20-30        | 4      |
+| 30-45        | 3      |
+| 45-60        | 2      |
+| > 60         | 1      |
+
+换乘 ≥ 2 次 → 基础分再减 0.5（最低 1 分）。
+
+### 多锚点加权（v0.3+）
+
+`profile.yml` 的 `anchors[]` 支持多个通勤目的地（公司 / 学校 / 家 / 合作方 / ...），
+每锚点有 `importance: 1-5`。`amap_query.py commute --to "{小区}"` 会：
+
+1. 遍历每个锚点，按其 `mode` 独立查路径
+2. 按 `_commute_score(duration_min, transfers)` 打每锚点分
+3. 加权聚合：`aggregate = sum(score × importance) / sum(importance)`
+
+失败的锚点（API 错误 / 地址解析失败）**不计入权重**。
+锚点耗时超 `max_minutes` 会标 `over_max: true`，在报告中醒目标注但不自动扣分。
+
+八维度里的"通勤"维度 = `aggregate_score_5`（多锚点）或 `score_5`（单锚点）。
 
 ---
 

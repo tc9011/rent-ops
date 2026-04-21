@@ -102,6 +102,37 @@ def _commute_score(duration_min: float, transfers: int) -> float:
     return max(1.0, round(base, 1))
 
 
+def _route_one(
+    client: AmapClient, city: dict,
+    origin: tuple[float, float], destination: tuple[float, float], mode: str,
+) -> dict[str, Any]:
+    """单段路径查询，输出标准字段 + score_5。"""
+    if mode == "transit":
+        route = client.route_transit(origin, destination, city["amap_city_name"])
+    elif mode == "driving":
+        route = client.route_driving(origin, destination)
+    elif mode == "walking":
+        route = client.route_walking(origin, destination)
+    elif mode == "bicycling":
+        route = client.route_bicycling(origin, destination)
+    else:
+        return {"status": "error", "message": f"unknown mode: {mode}"}
+    if route.get("status") != "ok":
+        return route
+    route["score_5"] = _commute_score(
+        route["duration_min"], route.get("transfers", 0),
+    )
+    return route
+
+
+def _anchors_from_profile(profile: dict) -> list[dict[str, Any]]:
+    """从 profile.yml 读 anchors（向后兼容 work_location）。格式和 build_city_runtime._build_anchors 一致。"""
+    # 复用 build_city_runtime 的逻辑，避免口径漂移
+    from scripts.build_city_runtime import _build_anchors
+    anchors, _warnings = _build_anchors(profile)
+    return anchors
+
+
 def cmd_commute(args) -> dict[str, Any]:
     city = _resolve_city(args.city)
     client = AmapClient()
@@ -109,49 +140,99 @@ def cmd_commute(args) -> dict[str, Any]:
         return {"status": "disabled", "reason": client.config.get("reason"),
                 "fallback_hint": "用 WebSearch 搜 '{工作地} 到 {小区} 地铁' 估算"}
 
-    profile = _load_profile()
-    origin_text = args.from_ or profile.get("work_location")
-    if not origin_text:
-        return {"status": "error",
-                "message": "--from 未指定且 profile.yml 的 work_location 为空"}
-
-    o = _coord(client, origin_text, city)
     d = _coord(client, args.to, city)
-    if not o:
-        return {"status": "error", "message": f"origin 解析失败: {origin_text}"}
     if not d:
         return {"status": "error", "message": f"destination 解析失败: {args.to}"}
 
-    mode = args.mode
-    if mode == "transit":
-        route = client.route_transit(o, d, city["amap_city_name"])
-    elif mode == "driving":
-        route = client.route_driving(o, d)
-    elif mode == "walking":
-        route = client.route_walking(o, d)
-    elif mode == "bicycling":
-        route = client.route_bicycling(o, d)
-    else:
-        return {"status": "error", "message": f"unknown mode: {mode}"}
+    # ── 单点 legacy 模式：显式 --from ──
+    if args.from_:
+        o = _coord(client, args.from_, city)
+        if not o:
+            return {"status": "error", "message": f"origin 解析失败: {args.from_}"}
+        r = _route_one(client, city, o, d, args.mode)
+        if r.get("status") != "ok":
+            return {"status": r.get("status", "error"),
+                    "message": r.get("message"),
+                    "mode": args.mode, "origin": args.from_, "destination": args.to}
+        return {
+            "status": "ok",
+            "mode": args.mode,
+            "origin": args.from_,
+            "destination": args.to,
+            "duration_min": r["duration_min"],
+            "distance_m": r["distance_m"],
+            "transfers": r.get("transfers", 0),
+            "walking_distance_m": r.get("walking_distance_m"),
+            "cost_cny": r.get("cost_cny"),
+            "tolls_cny": r.get("tolls_cny"),
+            "score_5": r["score_5"],
+        }
 
-    if route.get("status") != "ok":
-        return {"status": route.get("status", "error"),
-                "message": route.get("message"),
-                "mode": mode, "origin": origin_text, "destination": args.to}
+    # ── 多锚点模式：读 profile ──
+    profile = _load_profile()
+    anchors = _anchors_from_profile(profile)
+    if not anchors:
+        return {"status": "error",
+                "message": "profile.yml 没有 anchors，也没有 work_location。"
+                           "请参考 config/profile.example.yml 配置锚点。"}
 
-    score = _commute_score(route["duration_min"], route.get("transfers", 0))
+    per_anchor_results = []
+    total_weight = 0.0
+    weighted_sum = 0.0
+    for a in anchors:
+        o = _coord(client, a["address"], city)
+        if not o:
+            per_anchor_results.append({
+                "name": a["name"], "mode": a["mode"], "icon": a["icon"],
+                "importance": a["importance"],
+                "status": "error",
+                "message": f"address 解析失败: {a['address']}",
+            })
+            continue
+        # 如果 args.mode 被显式指定（非默认 transit），覆盖锚点 mode
+        mode = args.mode if args.mode != "transit" or args.from_ else a["mode"]
+        # 更清晰：mode 默认跟随锚点；只有用户显式给 --mode 非 transit 或非默认，才覆盖
+        # 为简单起见，不覆盖；尊重 anchor.mode
+        mode = a["mode"]
+        r = _route_one(client, city, o, d, mode)
+        if r.get("status") != "ok":
+            per_anchor_results.append({
+                "name": a["name"], "mode": mode, "icon": a["icon"],
+                "importance": a["importance"],
+                "status": r.get("status", "error"),
+                "message": r.get("message"),
+            })
+            continue
+        per_anchor_results.append({
+            "name": a["name"], "mode": mode, "icon": a["icon"],
+            "importance": a["importance"],
+            "status": "ok",
+            "duration_min": r["duration_min"],
+            "distance_m": r["distance_m"],
+            "transfers": r.get("transfers", 0),
+            "walking_distance_m": r.get("walking_distance_m"),
+            "score_5": r["score_5"],
+            "over_max": r["duration_min"] > a["max_minutes"],
+            "max_minutes": a["max_minutes"],
+        })
+        weighted_sum += r["score_5"] * a["importance"]
+        total_weight += a["importance"]
+
+    if total_weight == 0:
+        return {
+            "status": "error",
+            "message": "所有锚点路径查询都失败了",
+            "anchors": per_anchor_results,
+            "destination": args.to,
+        }
+
+    aggregate = round(weighted_sum / total_weight, 1)
     return {
         "status": "ok",
-        "mode": mode,
-        "origin": origin_text,
+        "mode": "multi-anchor",
         "destination": args.to,
-        "duration_min": route["duration_min"],
-        "distance_m": route["distance_m"],
-        "transfers": route.get("transfers", 0),
-        "walking_distance_m": route.get("walking_distance_m"),
-        "cost_cny": route.get("cost_cny"),
-        "tolls_cny": route.get("tolls_cny"),
-        "score_5": score,
+        "anchors": per_anchor_results,
+        "aggregate_score_5": aggregate,
     }
 
 
